@@ -193,10 +193,15 @@ async def flight_agent(state: TravelState):
 
 async def hotel_agent(state: TravelState):
     query = f"Best hotels for {state['user_query']}"
-    # hotel_results = tavily_search(query)
-    hotel_results = await tavily_mcp_search(query)
 
-    safe_hotel_results = compact_prompt_text(str(hotel_results), 1000)
+    try:
+        hotel_results = await tavily_mcp_search(query)
+        safe_hotel_results = compact_prompt_text(str(hotel_results), 1000)
+    except Exception as exc:
+        safe_hotel_results = (
+            "Hotel information unavailable: the hotel search service is currently rate-limited "
+            f"or unavailable ({exc}). Please use Booking.com or Agoda for local hotel options."
+        )
 
     return {
         "hotel_results": safe_hotel_results,
@@ -214,22 +219,35 @@ async def hotel_agent(state: TravelState):
 # =========================
 
 async def weather_agent(state: TravelState):
+    try:
+        city = extract_destination(state["user_query"])
+    except Exception as exc:
+        city = "destination"
+        city_error = f"Unable to resolve destination automatically ({exc})."
+    else:
+        city_error = None
 
-    city = extract_destination(state["user_query"])
+    try:
+        weather_data = await weather_mcp_search(city)
+        forecast_data = await forecast_mcp_search(city)
 
-    weather_data = await weather_mcp_search(city)
-    forecast_data = await forecast_mcp_search(city)
+        weather_summary = compact_prompt_text(
+            f"""
+            Current Weather:
+            {weather_data}
 
-    weather_summary = compact_prompt_text(
-        f"""
-        Current Weather:
-        {weather_data}
-
-        Forecast:
-        {forecast_data}
-        """,
-        1000
-    )
+            Forecast:
+            {forecast_data}
+            """,
+            1000
+        )
+    except Exception as exc:
+        weather_summary = (
+            "Weather information unavailable: the weather service is currently unavailable "
+            f"({exc}). Please check the local forecast before travel."
+        )
+        if city_error:
+            weather_summary = f"{city_error} {weather_summary}"
 
     return {
         "weather_results": weather_summary,
@@ -266,16 +284,22 @@ Weather Results:
 Make the itinerary practical, budget-aware, and easy to follow.
 """
 
-    response = await llm.ainvoke([
-        SystemMessage(content="You are an expert travel planner."),
-        HumanMessage(content=prompt)
-    ], config={"max_tokens": 400})
-
-    safe_itinerary = compact_prompt_text(response.content, 1200)
+    try:
+        response = await llm.ainvoke([
+            SystemMessage(content="You are an expert travel planner."),
+            HumanMessage(content=prompt)
+        ], config={"max_tokens": 400})
+        safe_itinerary = compact_prompt_text(response.content, 1200)
+    except Exception as exc:
+        safe_itinerary = (
+            "Itinerary generation is temporarily unavailable. "
+            f"Fallback guidance: build a simple day-by-day plan around the destination, "
+            f"budget, and weather notes. Error: {exc}"
+        )
 
     return {
         "itinerary": safe_itinerary,
-        "messages": [response],
+        "messages": [response] if 'response' in locals() else [AIMessage(content=safe_itinerary)],
         "llm_calls": state.get("llm_calls", 0) + 1
     }
 
@@ -322,13 +346,22 @@ Important:
 - Keep the response useful for real travel planning.
 """
 
-    response = await llm.ainvoke([
-        SystemMessage(content="You are a professional AI travel booking assistant."),
-        HumanMessage(content=final_prompt)
-    ], config={"max_tokens": 500})
+    try:
+        response = await llm.ainvoke([
+            SystemMessage(content="You are a professional AI travel booking assistant."),
+            HumanMessage(content=final_prompt)
+        ], config={"max_tokens": 500})
+        final_response = response
+    except Exception as exc:
+        final_response = AIMessage(
+            content=(
+                "The trip planner is temporarily unavailable due to a model or API issue. "
+                f"Please retry in a moment. Error: {exc}"
+            )
+        )
 
     return {
-        "messages": [response],
+        "messages": [final_response],
         "llm_calls": state.get("llm_calls", 0) + 1
     }
 
@@ -480,11 +513,14 @@ async def stream_travel_agent(user_input: str, thread_id: str | None = None):
                         "total": len(stage_names),
                     }
 
+        last_message = state["messages"][-1] if state.get("messages") else AIMessage(content="Travel planning completed.")
+        answer = getattr(last_message, "content", str(last_message))
+
         yield {
             "type": "result",
             "data": {
                 "thread_id": thread_id,
-                "answer": state["messages"][-1].content,
+                "answer": answer,
                 "flight_results": state.get("flight_results", ""),
                 "hotel_results": state.get("hotel_results", ""),
                 "weather_results": state.get("weather_results", ""),
