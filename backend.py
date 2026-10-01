@@ -1,5 +1,6 @@
 import os 
 import certifi
+import json
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,6 +17,7 @@ from psycopg.rows import dict_row
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import (
     AnyMessage,
     HumanMessage,
@@ -53,9 +55,21 @@ if not GROQ_API_KEY:
 # =========================
 
 llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
+    model="openai/gpt-oss-120b",
     api_key=GROQ_API_KEY
 )
+
+
+def compact_prompt_text(value: str, max_chars: int = 1200) -> str:
+    if value is None:
+        return ""
+
+    text = str(value).strip()
+    if len(text) <= max_chars:
+        return text
+
+    truncated = text[:max_chars].rstrip()
+    return f"{truncated}...\n[truncated for model token budget]"
 
 
 # =========================
@@ -121,23 +135,19 @@ Return concise travel guidance.
 
 
 # Flight Agent
-def flight_agent(state: TravelState):
+async def flight_agent(state: TravelState):
     print("\nINSIDE FLIGHT AGENT\n")
 
     query = state["user_query"]
 
     try:
 
-        airports = asyncio.run(
-            aviation_mcp_call(
-                "list_airports"
-            )
+        airports = await aviation_mcp_call(
+            "list_airports"
         )
 
-        airlines = asyncio.run(
-            aviation_mcp_call(
-                "list_airlines"
-            )
+        airlines = await aviation_mcp_call(
+            "list_airlines"
         )
 
 
@@ -146,18 +156,18 @@ def flight_agent(state: TravelState):
 
         prompt = FLIGHT_AGENT_PROMPT.format(
             query=query,
-            airport_data=str(airports)[:3000],
-            airline_data=str(airlines)[:3000]
+            airport_data=compact_prompt_text(airports, 2000),
+            airline_data=compact_prompt_text(airlines, 2000)
         )
 
-        response = llm.invoke([
+        response = await llm.ainvoke([
             SystemMessage(
                 content="You are an expert travel flight planner."
             ),
             HumanMessage(content=prompt)
-        ])
+        ], config={"max_tokens": 350})
 
-        flight_data = response.content
+        flight_data = compact_prompt_text(response.content, 1000)
 
     except Exception as e:
 
@@ -181,13 +191,15 @@ def flight_agent(state: TravelState):
 # Hotel Agent
 # =========================
 
-def hotel_agent(state: TravelState):
+async def hotel_agent(state: TravelState):
     query = f"Best hotels for {state['user_query']}"
     # hotel_results = tavily_search(query)
-    hotel_results = asyncio.run(tavily_mcp_search(query))
+    hotel_results = await tavily_mcp_search(query)
+
+    safe_hotel_results = compact_prompt_text(str(hotel_results), 1000)
 
     return {
-        "hotel_results": hotel_results,
+        "hotel_results": safe_hotel_results,
         "messages": [
             AIMessage(content="Hotel information fetched.")
         ],
@@ -201,26 +213,26 @@ def hotel_agent(state: TravelState):
 # Weather Agent
 # =========================
 
-def weather_agent(state: TravelState):
+async def weather_agent(state: TravelState):
 
     city = extract_destination(state["user_query"])
 
-    weather_data = asyncio.run(
-        weather_mcp_search(city)
-    )
+    weather_data = await weather_mcp_search(city)
+    forecast_data = await forecast_mcp_search(city)
 
-    forecast_data = asyncio.run(
-        forecast_mcp_search(city)
-    )
-
-    return {
-        "weather_results": f"""
+    weather_summary = compact_prompt_text(
+        f"""
         Current Weather:
         {weather_data}
 
         Forecast:
         {forecast_data}
         """,
+        1000
+    )
+
+    return {
+        "weather_results": weather_summary,
         "messages": [
             AIMessage(
                 content="Weather information fetched"
@@ -235,7 +247,7 @@ def weather_agent(state: TravelState):
 # Itinerary Agent
 # =========================
 
-def itinerary_agent(state: TravelState):
+async def itinerary_agent(state: TravelState):
     prompt = f"""
 Create a complete travel itinerary.
 
@@ -243,24 +255,26 @@ User Query:
 {state['user_query']}
 
 Flight Results:
-{state['flight_results']}
+{compact_prompt_text(state.get('flight_results', ''), 1800)}
 
 Hotel Results:
-{state['hotel_results']}
+{compact_prompt_text(state.get('hotel_results', ''), 1800)}
 
 Weather Results:
-{state['weather_results']}
+{compact_prompt_text(state.get('weather_results', ''), 1800)}
 
 Make the itinerary practical, budget-aware, and easy to follow.
 """
 
-    response = llm.invoke([
+    response = await llm.ainvoke([
         SystemMessage(content="You are an expert travel planner."),
         HumanMessage(content=prompt)
-    ])
+    ], config={"max_tokens": 400})
+
+    safe_itinerary = compact_prompt_text(response.content, 1200)
 
     return {
-        "itinerary": response.content,
+        "itinerary": safe_itinerary,
         "messages": [response],
         "llm_calls": state.get("llm_calls", 0) + 1
     }
@@ -271,7 +285,7 @@ Make the itinerary practical, budget-aware, and easy to follow.
 # Final Response Agent
 # =========================
 
-def final_agent(state: TravelState):
+async def final_agent(state: TravelState):
     final_prompt = f"""
 Generate the final travel response for the user.
 
@@ -279,16 +293,16 @@ User Request:
 {state['user_query']}
 
 Flights:
-{state['flight_results']}
+{compact_prompt_text(state.get('flight_results', ''), 1500)}
 
 Hotels:
-{state['hotel_results']}
+{compact_prompt_text(state.get('hotel_results', ''), 1500)}
 
 Weather:
-{state['weather_results']}
+{compact_prompt_text(state.get('weather_results', ''), 1500)}
 
 Itinerary:
-{state['itinerary']}
+{compact_prompt_text(state.get('itinerary', ''), 2000)}
 
 Format the final answer beautifully using these sections:
 
@@ -308,10 +322,10 @@ Important:
 - Keep the response useful for real travel planning.
 """
 
-    response = llm.invoke([
+    response = await llm.ainvoke([
         SystemMessage(content="You are a professional AI travel booking assistant."),
         HumanMessage(content=final_prompt)
-    ])
+    ], config={"max_tokens": 500})
 
     return {
         "messages": [response],
@@ -342,16 +356,22 @@ graph.add_edge("final_agent", END)
 # =========================
 # PostgreSQL Checkpointer
 # =========================
-DATABASE_URL = get_database_url()
+try:
+    DATABASE_URL = get_database_url()
 
-_conn = psycopg.connect(
-    DATABASE_URL,
-    autocommit=True,
-    row_factory=dict_row
-)
+    _conn = psycopg.connect(
+        DATABASE_URL,
+        autocommit=True,
+        row_factory=dict_row,
+        connect_timeout=5
+    )
 
-checkpointer = PostgresSaver(_conn)
-checkpointer.setup()
+    checkpointer = PostgresSaver(_conn)
+    checkpointer.setup()
+    print("Using PostgreSQL checkpointer.")
+except Exception as exc:
+    print(f"PostgreSQL unavailable; using in-memory checkpointer instead: {exc}")
+    checkpointer = MemorySaver()
 
 travel_graph = graph.compile(checkpointer=checkpointer)
 
@@ -361,39 +381,116 @@ travel_graph = graph.compile(checkpointer=checkpointer)
 # Function for FastAPI
 # =========================
 
-def run_travel_agent(user_input: str, thread_id: str | None = None):
+async def run_travel_agent(user_input: str, thread_id: str | None = None):
     if not thread_id:
         thread_id = f"user_{uuid.uuid4().hex}"
 
-    config = {
-        "configurable": {
-            "thread_id": thread_id
+    result = None
+    async for event in stream_travel_agent(user_input, thread_id):
+        if event["type"] == "error":
+            raise RuntimeError(event["error"])
+        if event["type"] == "result":
+            result = event["data"]
+
+    if result is None:
+        raise RuntimeError("The travel planner finished without a result.")
+    return result
+
+
+TRAVEL_STAGES = {
+    "flight_agent": "Searching flight options",
+    "hotel_agent": "Finding hotel recommendations",
+    "weather_agent": "Checking destination weather",
+    "itinerary_agent": "Building your itinerary",
+    "final_agent": "Preparing your final travel plan",
+}
+
+TRAVEL_STAGE_RUNTIMES = {
+    "flight_agent": "Groq / openai/gpt-oss-120b",
+    "hotel_agent": "Tavily MCP search",
+    "weather_agent": "Weather MCP tools",
+    "itinerary_agent": "Groq / openai/gpt-oss-120b",
+    "final_agent": "Groq / openai/gpt-oss-120b",
+}
+
+
+async def stream_travel_agent(user_input: str, thread_id: str | None = None):
+    if not thread_id:
+        thread_id = f"user_{uuid.uuid4().hex}"
+
+    config = {"configurable": {"thread_id": thread_id}}
+    state = {
+        "messages": [HumanMessage(content=user_input)],
+        "user_query": user_input,
+        "flight_results": "",
+        "hotel_results": "",
+        "weather_results": "",
+        "itinerary": "",
+        "llm_calls": 0,
+    }
+    stage_names = list(TRAVEL_STAGES)
+    completed = 0
+
+    yield {
+        "type": "progress",
+        "stage": stage_names[0],
+        "label": TRAVEL_STAGES[stage_names[0]],
+        "runtime": TRAVEL_STAGE_RUNTIMES[stage_names[0]],
+        "status": "running",
+        "completed": completed,
+        "total": len(stage_names),
+    }
+
+    try:
+        async for update in travel_graph.astream(
+            state,
+            config=config,
+            stream_mode="updates",
+        ):
+            for stage_name, stage_update in update.items():
+                if stage_name not in TRAVEL_STAGES:
+                    continue
+
+                for key, value in stage_update.items():
+                    if key == "messages":
+                        state[key].extend(value)
+                    else:
+                        state[key] = value
+
+                completed += 1
+                yield {
+                    "type": "progress",
+                    "stage": stage_name,
+                    "label": TRAVEL_STAGES[stage_name],
+                    "runtime": TRAVEL_STAGE_RUNTIMES[stage_name],
+                    "status": "complete",
+                    "completed": completed,
+                    "total": len(stage_names),
+                }
+
+                if completed < len(stage_names):
+                    next_stage = stage_names[completed]
+                    yield {
+                        "type": "progress",
+                        "stage": next_stage,
+                        "label": TRAVEL_STAGES[next_stage],
+                        "runtime": TRAVEL_STAGE_RUNTIMES[next_stage],
+                        "status": "running",
+                        "completed": completed,
+                        "total": len(stage_names),
+                    }
+
+        yield {
+            "type": "result",
+            "data": {
+                "thread_id": thread_id,
+                "answer": state["messages"][-1].content,
+                "flight_results": state.get("flight_results", ""),
+                "hotel_results": state.get("hotel_results", ""),
+                "weather_results": state.get("weather_results", ""),
+                "itinerary": state.get("itinerary", ""),
+                "llm_calls": state.get("llm_calls", 0),
+            },
         }
-    }
-
-    result = travel_graph.invoke(
-        {
-            "messages": [
-                HumanMessage(content=user_input)
-            ],
-            "user_query": user_input,
-            "flight_results": "",
-            "hotel_results": "",
-            "weather_results": "",
-            "itinerary": "",
-            "llm_calls": 0
-        },
-        config=config
-    )
-
-    final_answer = result["messages"][-1].content
-
-    return {
-        "thread_id": thread_id,
-        "answer": final_answer,
-        "flight_results": result.get("flight_results", ""),
-        "hotel_results": result.get("hotel_results", ""),
-        "weather_results": result.get("weather_results", ""),
-        "itinerary": result.get("itinerary", ""),
-        "llm_calls": result.get("llm_calls", 0),
-    }
+    except Exception as exc:
+        yield {"type": "error", "error": str(exc)}

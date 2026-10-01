@@ -7,114 +7,125 @@
 
     <title>TripMate AI</title>
 
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/app.css">
 </head>
 
 <body>
 
-    <div class="page-bg">
-        <div class="gradient-circle circle-1"></div>
-        <div class="gradient-circle circle-2"></div>
-        <div class="gradient-circle circle-3"></div>
-    </div>
+    <header class="topbar">
+        <a class="brand" href="/" aria-label="TripMate home">
+            <span class="brand-mark">T</span>
+            <span>tripmate<span class="brand-period">.</span></span>
+        </a>
+        <div class="topbar-meta">
+            <span class="system-indicator"><span></span> SYSTEM READY</span>
+            <span class="topbar-divider"></span>
+            <span class="system-label">MULTI-AGENT TRAVEL PLANNER</span>
+        </div>
+    </header>
 
     <main class="app-container">
-
-        <section class="hero-section">
-            <div class="badge">
-                ✈️ TripMate AI — A Multi-Agent Travel Planner with LangGraph & MCP
-            </div>
-
-            <h1>
-                Plan Your Perfect Trip with AI
-            </h1>
-
-            <p>
-                Search flights, discover hotels, and generate a complete travel itinerary using a multi-agent LangGraph system.
-            </p>
+        <section class="intro">
+            <div class="eyebrow"><span>01</span> YOUR NEXT JOURNEY STARTS HERE</div>
+            <h1>Travel, <em>well planned.</em></h1>
+            <p>One request. A whole trip, thoughtfully put together.</p>
         </section>
 
-        <section class="planner-card">
-
-            <div class="card-header">
-                <div>
-                    <h2>Where do you want to go?</h2>
-                    <p>
-                        Example: Plan a complete 7 days Japan trip from Bangladesh under 2 lakhs.
-                    </p>
+        <section class="workspace" aria-label="Travel planner workspace">
+            <section class="planner-panel">
+                <div class="panel-heading">
+                    <div>
+                        <span class="section-index">PLAN A TRIP</span>
+                        <h2>Where to?</h2>
+                    </div>
+                    <span class="heading-mark" aria-hidden="true">↗</span>
                 </div>
 
-                <div class="status-pill">
-                    <span class="status-dot"></span>
-                    Online
-                </div>
-            </div>
-
-            <div class="input-area">
+                <label class="field-label" for="userInput">YOUR TRAVEL BRIEF</label>
                 <textarea
                     id="userInput"
-                    placeholder="Plan a complete 7 days Japan trip including flights, hotels and sightseeing under 2 lakhs..."
+                    placeholder="A week in Japan from Dhaka, with flights, stays, and a 2 lakh budget..."
+                    aria-label="Describe your travel plans"
                 ></textarea>
 
-                <button id="sendBtn" onclick="sendMessage()">
-                    <span id="btnText">Generate Plan</span>
-                    <span id="btnLoader" class="loader hidden"></span>
-                </button>
-            </div>
+                <div class="prompt-heading">
+                    <span>START WITH AN IDEA</span>
+                    <span>01 — 04</span>
+                </div>
+                <div class="quick-prompts">
+                    <button onclick="setPrompt('Plan a complete 7 days Japan trip from Bangladesh including flights, hotels and sightseeing under 2 lakhs.')">Japan <span>↗</span></button>
+                    <button onclick="setPrompt('Plan a 5 days Dubai trip from Dhaka with flights, hotels and sightseeing.')">Dubai <span>↗</span></button>
+                    <button onclick="setPrompt('Plan a 7 days Thailand trip from Bangladesh with budget hotels and sightseeing.')">Thailand <span>↗</span></button>
+                    <button onclick="setPrompt('Give me all country flight info.')">Flight intel <span>↗</span></button>
+                </div>
 
-            <div class="quick-prompts">
-                <button onclick="setPrompt('Plan a complete 7 days Japan trip from Bangladesh including flights, hotels and sightseeing under 2 lakhs.')">
-                    Japan Trip
-                </button>
+                <div class="input-actions">
+                    <span class="input-hint">Ctrl + Enter to run</span>
+                    <button id="sendBtn" onclick="sendMessage()">
+                        <span id="btnText">Build my trip <span aria-hidden="true">↗</span></span>
+                        <span id="btnLoader" class="loader hidden"></span>
+                    </button>
+                </div>
+            </section>
 
-                <button onclick="setPrompt('Plan a 5 days Dubai trip from Dhaka with flights, hotels and sightseeing.')">
-                    Dubai Trip
-                </button>
+            <aside class="terminal-panel" aria-live="polite" aria-label="Live travel planning process">
+                <div class="terminal-header">
+                    <div class="console-title"><span class="console-wave" aria-hidden="true">〰</span><span>RUN CONSOLE</span></div>
+                    <span id="runState" class="run-state"><span></span> IDLE</span>
+                </div>
 
-                <button onclick="setPrompt('Plan a 7 days Thailand trip from Bangladesh with budget hotels and sightseeing.')">
-                    Thailand Trip
-                </button>
+                <div class="active-runtime">
+                    <span class="runtime-label">CURRENT PHASE</span>
+                    <strong id="progressStage">Awaiting your request</strong>
+                    <span class="runtime-label model-label">ACTIVE MODEL / TOOL</span>
+                    <code id="activeModel">No runtime active</code>
+                </div>
 
-                <button onclick="setPrompt('Give me all country flight info.')">
-                    Global Flights
-                </button>
-            </div>
+                <div class="terminal-progress">
+                    <div class="progress-labels">
+                        <span id="progressCount">0 / 5 PHASES</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                    <div id="progressTrack" class="progress-track" role="progressbar" aria-label="Travel plan generation progress" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0">
+                        <span id="progressFill" class="progress-fill"></span>
+                    </div>
+                </div>
 
+                <ol class="stage-list" aria-label="Travel planning phases">
+                    <li data-stage="flight_agent"><span class="stage-marker"></span><span>Flight research</span><small>01</small></li>
+                    <li data-stage="hotel_agent"><span class="stage-marker"></span><span>Stay discovery</span><small>02</small></li>
+                    <li data-stage="weather_agent"><span class="stage-marker"></span><span>Local conditions</span><small>03</small></li>
+                    <li data-stage="itinerary_agent"><span class="stage-marker"></span><span>Itinerary design</span><small>04</small></li>
+                    <li data-stage="final_agent"><span class="stage-marker"></span><span>Final recommendations</span><small>05</small></li>
+                </ol>
+
+                <div class="console-log-heading"><span>LIVE ACTIVITY</span><span id="consoleClock">--:--:--</span></div>
+                <div id="terminalLog" class="terminal-log"></div>
+            </aside>
         </section>
 
         <section id="resultSection" class="result-section hidden">
-
             <div class="result-header">
                 <div>
-                    <h2>Your AI Travel Plan</h2>
+                    <span class="section-index">YOUR ITINERARY</span>
+                    <h2>Made for the way you travel.</h2>
                     <p id="threadInfo">Thread ID: -</p>
                 </div>
-
                 <div class="result-actions">
-                    <button class="copy-btn" onclick="copyResult()">
-                        Copy
-                    </button>
-
-                    <button class="download-btn" onclick="downloadPDF()">
-                        Download PDF
-                    </button>
+                    <button class="copy-btn" onclick="copyResult()">Copy plan</button>
+                    <button class="download-btn" onclick="downloadPDF()">Download PDF <span aria-hidden="true">↗</span></button>
                 </div>
             </div>
-
             <div id="pdfContent" class="pdf-content">
                 <h1 class="pdf-title">AI Travel Plan</h1>
                 <div id="resultBox" class="result-box"></div>
             </div>
-
         </section>
 
-        <section id="errorBox" class="error-box hidden"></section>
-
+        <section id="errorBox" class="error-box hidden" role="alert"></section>
     </main>
 
-    <footer>
-        Built with FastAPI, LangGraph, Groq, PostgreSQL, Tavily and AviationStack
-    </footer>
+    <footer><span>TRIPMATE AI</span><span>FLIGHTS · STAYS · WEATHER · ITINERARIES</span></footer>
 
     <!-- Markdown Renderer -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
