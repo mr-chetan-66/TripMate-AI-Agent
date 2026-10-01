@@ -154,14 +154,14 @@ body {
 
 .input-area {
     display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 16px;
-    align-items: stretch;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    align-items: start;
 }
 
 textarea {
     width: 100%;
-    min-height: 150px;
+    min-height: 130px;
     resize: vertical;
     border: 1px solid rgba(148, 163, 184, 0.24);
     border-radius: 22px;
@@ -228,6 +228,150 @@ textarea::placeholder {
 .quick-prompts button:hover {
     background: rgba(59, 130, 246, 0.2);
     border-color: rgba(96, 165, 250, 0.5);
+}
+
+.terminal-panel {
+    margin-top: 0;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 18px;
+    overflow: hidden;
+    background: rgba(2, 6, 23, 0.9);
+    box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.15);
+}
+
+.terminal-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: rgba(15, 23, 42, 0.95);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.terminal-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.terminal-dot.green { background: #22c55e; }
+.terminal-dot.yellow { background: #fbbf24; }
+.terminal-dot.red { background: #f87171; }
+
+.terminal-title {
+    margin-left: 8px;
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    color: #94a3b8;
+}
+
+.progress-count {
+    margin-left: auto;
+    color: #7dd3fc;
+    font-family: "Consolas", "SFMono-Regular", monospace;
+    font-size: 0.75rem;
+}
+
+.terminal-progress {
+    padding: 11px 14px 8px;
+    background: rgba(15, 23, 42, 0.62);
+}
+
+.progress-labels {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+    color: #cbd5e1;
+    font-family: "Consolas", "SFMono-Regular", monospace;
+    font-size: 0.76rem;
+}
+
+#progressStage {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#progressPercent {
+    color: #86efac;
+    flex-shrink: 0;
+}
+
+.progress-track {
+    height: 5px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.2);
+}
+
+.progress-fill {
+    display: block;
+    width: 0;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #38bdf8, #34d399);
+    transition: width 0.3s ease;
+}
+
+.terminal-log {
+    height: 116px;
+    overflow-y: auto;
+    padding: 12px 14px 14px;
+    background: linear-gradient(180deg, rgba(2, 6, 23, 0.98), rgba(15, 23, 42, 0.96));
+    font-family: "Consolas", "SFMono-Regular", monospace;
+    font-size: 0.82rem;
+    line-height: 1.7;
+    color: #dbeafe;
+}
+
+.terminal-log::-webkit-scrollbar {
+    width: 10px;
+}
+
+.terminal-log::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.4);
+    border-radius: 8px;
+}
+
+.log-entry {
+    display: flex;
+    gap: 10px;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+    word-break: break-word;
+}
+
+.log-time {
+    color: #64748b;
+    min-width: 68px;
+    flex-shrink: 0;
+}
+
+.log-text {
+    flex: 1;
+}
+
+.log-entry.success .log-text { color: #86efac; }
+.log-entry.error .log-text { color: #fca5a5; }
+
+.input-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.input-hint {
+    color: #94a3b8;
+    font-size: 0.82rem;
+}
+
+#sendBtn {
+    min-height: 52px;
+    border-radius: 14px;
 }
 
 .result-section {
@@ -459,6 +603,15 @@ footer {
 
     .input-area {
         grid-template-columns: 1fr;
+    }
+
+    .input-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .input-hint {
+        text-align: center;
     }
 
     #sendBtn {
